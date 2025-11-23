@@ -1,0 +1,567 @@
+---
+title: Accès avancé aux bases de données relationnelles en Java (JDBC)
+provide_notes: true
+provide_slides: true
+jupyter: java-lts
+echo: true
+output: true
+categories:
+  - Java
+  - I111
+  - Lecture
+  - JDBC
+---
+
+## Optimisation des Connexions à la Base de Données
+
+::: {.content-visible when-profile="slides"}
+Pour optimiser les performances et l'utilisation des ressources, réutilisez les connexions à la base de données. Deux approches courantes :
+
+1. **DataSource**
+   - Utilisez une implémentation de `DataSource` pour gérer les connexions centralisées.
+2. **Pooling de Connexions**
+    - Utilisez des bibliothèques de pooling de connexions comme  **[Apache DBCP](http://commons.apache.org/proper/commons-dbcp/)** et **[C3P0](https://github.com/swaldman/c3p0)** pour réduire les coûts d'ouverture/fermeture des connexions.
+    - Réduction de la latence, meilleure gestion des ressources.
+:::
+
+::: {.content-visible when-profile="notes"}
+La gestion des connexions à la base de données est cruciale pour garantir des performances optimales et une utilisation efficace des ressources. Au lieu d'ouvrir et de fermer des connexions pour chaque requête, il est recommandé de les réutiliser autant que possible. Voici deux approches courantes pour gérer les connexions :
+
+1. **DataSource** : Utilisez le concept de DataSource, qui fournit une interface centralisée pour gérer les connexions. Les serveurs d'applications et les frameworks tels que Spring proposent des implémentations de DataSource. Cela vous permet de configurer les paramètres de connexion (URL, nom d'utilisateur, mot de passe) une seule fois et de réutiliser ces connexions dans toute votre application.
+
+2. **[Apache DBCP](http://commons.apache.org/proper/commons-dbcp/)** et **[C3P0](https://github.com/swaldman/c3p0)** : Utilisez des bibliothèques de pooling de connexions comme Apache DBCP ou C3P0. Elles gèrent un pool de connexions réutilisables, ce qui évite les coûts de création et de fermeture des connexions à chaque requête. Elles offrent également des fonctionnalités telles que la surveillance des connexions, la configuration des limites de pool et la gestion des connexions inactives.
+
+En adoptant l'une de ces approches, vous améliorerez la gestion des connexions à la base de données, réduirez la latence et optimiserez les performances de votre application.
+:::
+
+L'utilisation est simple on définit une classe qui paramètre une datasource qui gère un pool de connexion et fournit des connections : 
+
+```{java}
+//| vscode: {languageId: java}
+%maven org.apache.commons:commons-dbcp2:2.13.0
+```
+
+```{java}
+//| vscode: {languageId: java}
+import org.apache.commons.dbcp2.BasicDataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
+
+public class DBCPDataSource {
+
+    // Création d'un pool de connexions avec BasicDataSource
+    private static BasicDataSource ds = new BasicDataSource();
+
+    static {
+        // Configuration des paramètres de connexion
+        ds.setUrl("jdbc:postgresql://docker/gtfs"); // URL de la base de données
+        ds.setUsername(System.getenv("DB_USERNAME")); // Nom d'utilisateur (récupéré depuis les variables d'environnement)
+        ds.setPassword(System.getenv("DB_PASSWORD")); // Mot de passe (récupéré depuis les variables d'environnement)
+
+        // Configuration du pool de connexions
+        ds.setMinIdle(5); // Nombre minimal de connexions inactives dans le pool
+        ds.setMaxIdle(10); // Nombre maximal de connexions inactives dans le pool
+        ds.setMaxOpenPreparedStatements(100); // Nombre maximal de requêtes préparées ouvertes simultanément
+    }
+
+    // Constructeur privé pour empêcher l'instanciation directe de la classe
+    private DBCPDataSource() {
+    }
+
+    // Méthode statique pour obtenir une connexion à partir du pool
+    public static Connection getConnection() throws SQLException {
+        return ds.getConnection();
+    }
+}
+```
+
+Il suffit ensuite de demander et de rendre une connexion (le close ne ferme pas forcément la connexion).
+
+```{java}
+//| vscode: {languageId: java}
+// Connexion à la base de données et récupération des métadonnées du ResultSet
+try (Connection connection = DBCPDataSource.getConnection();
+     ResultSet rs = connection.createStatement().executeQuery("SELECT * FROM stops")) {
+
+    // Récupération de l'objet ResultSetMetaData
+    ResultSetMetaData rsmd = rs.getMetaData();
+    int nbColonnes = rsmd.getColumnCount();
+
+    // Parcours des colonnes et affichage des informations
+    for (int i = 1; i <= nbColonnes; i++) {
+        String typeColonne = rsmd.getColumnTypeName(i);
+        String nomColonne = rsmd.getColumnName(i);
+        System.out.println("Colonne " + i + " de nom " + nomColonne + " de type " + typeColonne);
+    }
+} catch (SQLException e) {
+    e.printStackTrace();
+}
+```
+
+## La couche DAO (Data Access Object) en Java JDBC
+
+::: {.content-visible when-profile="notes"}
+Le pattern DAO (Data Access Object) est un composant fondamental de l'architecture des applications Java qui interagissent avec une base de données. Il répond à plusieurs problématiques essentielles du développement d'applications :
+
+La couche DAO agit comme une interface entre l'application et la base de données. Elle permet d'isoler complètement la logique métier des détails techniques de la persistance des données. Cette séparation offre plusieurs avantages :
+- Maintenance facilitée du code
+- Possibilité de changer de système de persistance sans impacter le code métier
+- Centralisation de la gestion des erreurs liées à la base de données
+
+L'implémentation d'une couche DAO repose généralement sur deux composants principaux :
+
+1. **Interface générique**
+   Cette interface définit un contrat standard pour les opérations CRUD (Create, Read, Update, Delete). L'utilisation des génériques Java permet d'adapter l'interface à différents types d'entités tout en maintenant une structure commune.
+
+2. **Classes d'implémentation**
+   Chaque entité métier dispose de sa propre classe DAO qui implémente l'interface générique. Ces classes contiennent la logique spécifique d'accès aux données, notamment :
+
+   - Les requêtes SQL paramétrées
+   - La gestion des connexions
+   - La transformation des résultats en objets métier
+   - La gestion des exceptions
+
+Pour une implémentation robuste de la couche DAO, il est recommandé de :
+
+- Utiliser des requêtes préparées pour prévenir les injections SQL
+- Gérer proprement les ressources (connexions, statements, resultsets)
+- Transformer les exceptions SQL en exceptions métier
+- Documenter clairement les comportements attendus
+- Implémenter des tests unitaires pour chaque DAO
+:::
+
+::: {.content-visible when-profile="slides"}
+- Objectif de la couche DAO (Data Access Object)
+  - Abstraire l'accès aux données pour isoler la logique métier de la persistance.
+  - Centraliser les opérations spécifiques liées à la persistance des données.
+- Associations entre entités et classes DAO
+  - Chaque entité (par exemple, une table dans la base de données) peut être associée à une classe DAO.
+  - Évite la répétition de code pour les opérations CRUD (Create, Read, Update, Delete).
+- Implémentation de base pour une DAO
+  1. **Interface générique** :
+     - Définir une interface avec les méthodes CRUD (create, read, update, delete).
+     - Exemple : `DAO<T>`.
+  2. **Classe générique** :
+     - Implémenter cette interface dans une classe par entité (par exemple, `DogDAO implements DAO<Dog>`).
+     - Utiliser une classe asbtraite pour factoriser le code commun.
+     - Utiliser des requêtes SQL paramétrées pour les opérations.
+     - Gérer les exceptions spécifiques (transformer les exceptions SQL en exceptions applicatives).
+:::
+
+### Interface générique DAO
+
+```{java}
+//| vscode: {languageId: java}
+public interface GenericDAO<T, ID> {
+    void create(T entity) throws SQLException;
+    T read(ID id) throws SQLException;
+    void update(T entity) throws SQLException;
+    void delete(ID id) throws SQLException;
+    List<T> findAll() throws SQLException;
+}
+```
+
+### Implantation concrète DAO
+
+```{java}
+//| vscode: {languageId: java}
+// Record User pour représenter l'entité utilisateur
+public record User(Integer id, String name, String email) {}
+
+// Implémentation concrète de UserDAO
+public class UserDAO implements GenericDAO<User, Integer> {
+    private Connection connection;
+
+    public UserDAO(Connection connection) {
+        this.connection = connection;
+    }
+
+    @Override
+    public void create(User user) throws SQLException {
+        String sql = "INSERT INTO users (name, email) VALUES (?, ?)";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, user.name());
+            pstmt.setString(2, user.email());
+            pstmt.executeUpdate();
+        }
+    }
+
+    @Override
+    public User read(Integer id) throws SQLException {
+        String sql = "SELECT * FROM users WHERE id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setInt(1, id);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return new User(rs.getInt("id"), rs.getString("name"), rs.getString("email"));
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public void update(User user) throws SQLException {
+        String sql = "UPDATE users SET name = ?, email = ? WHERE id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, user.name());
+            pstmt.setString(2, user.email());
+            pstmt.setInt(3, user.id());
+            pstmt.executeUpdate();
+        }
+    }
+
+    @Override
+    public void delete(Integer id) throws SQLException {
+        String sql = "DELETE FROM users WHERE id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setInt(1, id);
+            pstmt.executeUpdate();
+        }
+    }
+
+    @Override
+    public List<User> findAll() throws SQLException {
+        List<User> users = new ArrayList<>();
+        String sql = "SELECT * FROM users";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                users.add(new User(rs.getInt("id"), rs.getString("name"), rs.getString("email")));
+            }
+        }
+        return users;
+    }
+}
+```
+
+### Création d'une base de données simple
+
+```{java}
+%maven com.h2database:h2:2.3.232
+%maven com.github.javafaker:javafaker:1.0.2
+import com.github.javafaker.Faker;
+```
+
+```{java}
+//| vscode: {languageId: java}
+private static final String DB_URL = "jdbc:h2:mem:testdb";
+private static final String DB_USERNAME = "sa";
+private static final String DB_PASSWORD = "";
+
+Class.forName("org.h2.Driver");
+
+private static void createTables(Connection connection) throws SQLException {
+    String createUsersTableSql = "CREATE TABLE users (" +
+            "id INT AUTO_INCREMENT PRIMARY KEY," +
+            "name VARCHAR(255) NOT NULL," +
+            "email VARCHAR(255) NOT NULL)";
+    try (Statement statement = connection.createStatement()) {
+        statement.execute(createUsersTableSql);
+    }
+}
+
+private static void populateTables(Connection connection) throws SQLException {
+    Faker faker = new Faker();
+    String insertUsersSql = "INSERT INTO users (name, email) VALUES (?, ?)";
+
+    try (PreparedStatement pstmt = connection.prepareStatement(insertUsersSql)) {
+        IntStream.range(0, 10).forEach(i -> {
+            try {
+                pstmt.setString(1, faker.name().fullName());
+                pstmt.setString(2, faker.internet().emailAddress());
+                pstmt.executeUpdate();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+}
+```
+
+### Utilisation de la DAO
+
+```{java}
+try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD)) {
+    createTables(connection);
+    populateTables(connection);
+    System.out.println("Database setup completed successfully.");
+
+    // Utilisation de UserDAO pour effectuer des opérations CRUD
+    UserDAO userDAO = new UserDAO(connection);
+
+    // Création d'utilisateurs
+    userDAO.create(new User(null, "Alice", "alice@example.com"));
+    userDAO.create(new User(null, "Bob", "bob@example.com"));
+
+    // Lecture d'un utilisateur
+    User user = userDAO.read(1);
+    System.out.println("Read user: " + user);
+
+    // Mise à jour d'un utilisateur
+    userDAO.update(new User(1, "Alice Updated", "alice.updated@example.com"));
+
+    // Suppression d'un utilisateur
+    userDAO.delete(2);
+
+    // Lecture de tous les utilisateurs
+    List<User> users = userDAO.findAll();
+    users.forEach(System.out::println);
+
+} catch (SQLException e) {
+    e.printStackTrace();
+}
+```
+
+## Metadata
+
+::: {.content-visible when-profile="slides"}
+* JDBC permet de récupérer des informations sur le type de données que l'on vient de récupérer par un SELECT (interface ResultSetMetaData),
+* mais aussi sur la base de données elle-même (interface DatabaseMetaData)
+* Les données que l'on peut récupérer avec DatabaseMetaData dépendent du SGBD avec lequel on travaille
+:::
+
+::: {.content-visible when-profile="notes"}
+JDBC offre des fonctionnalités puissantes pour récupérer des informations à partir d'une base de données. 
+
+**`ResultSetMetaData`** : Cette interface permet d'obtenir des informations sur les résultats d'une requête SELECT. Vous pouvez récupérer des détails tels que le nombre de colonnes, les noms des colonnes, les types de données, les précisions, les échelles, etc. Cela facilite la manipulation des résultats et l'adaptation de votre code en fonction des données récupérées.
+
+**`DatabaseMetaData`** : Cette interface fournit des informations sur la base de données elle-même, indépendamment des requêtes spécifiques. Vous pouvez obtenir des détails sur les tables, les colonnes, les index, les contraintes, les utilisateurs, les privilèges, etc. Les données accessibles via `DatabaseMetaData` varient en fonction du SGBD (Système de Gestion de Bases de Données) avec lequel vous travaillez. Par exemple, certaines bases de données peuvent fournir plus d'informations que d'autres.
+:::
+
+
+```{java}
+//| echo: false
+//| output: false
+//| vscode: {languageId: java}
+String DB_URL="jdbc:postgresql://docker/gtfs";
+String DB_USERNAME=Optional.of(System.getenv("DB_USERNAME")).orElseThrow(()->new IllegalArgumentException("DB_USERNAME is required"));
+String DB_PASSWORD=Optional.of(System.getenv("DB_PASSWORD")).orElseThrow(()->new IllegalArgumentException("DB_PASSWORD is required"));
+%maven org.postgresql:postgresql:42.7.3
+```
+
+### Exemple de récupération des métadonnées de la base de données
+
+```{java}
+//| vscode: {languageId: java}
+try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD)) {
+
+    // Récupération des métadonnées de la base de données
+    DatabaseMetaData metadata = connection.getMetaData();
+
+    // Affichage des informations sur le système de gestion de base de données
+    System.out.printf("DBMS: %s %d.%d%n",
+            metadata.getDatabaseProductName(),
+            metadata.getDatabaseMajorVersion(),
+            metadata.getDatabaseMinorVersion());
+
+    // Affichage de la base de données et du schéma actuels
+    System.out.printf("Current Database: %s Schema: %s%n",
+            connection.getCatalog(), connection.getSchema());
+
+    // Récupération de la liste des tables pour vérifier l'existence de "SIMPLEJDBC_PERSON"
+    ResultSet tables = metadata.getTables(connection.getCatalog(),
+            connection.getSchema(),
+            "SIMPLEJDBC_PERSON", null);
+
+    if (tables.next()) {
+        // Si la table existe déjà, affichage d'un message
+        System.out.println("Table " + tables.getString("TABLE_NAME") + " already exists.");
+    } else {
+        // Si la table n'existe pas, création de la table "SIMPLEJDBC_PERSON"
+        String createTableSql = "CREATE TABLE \"SIMPLEJDBC_PERSON\"(" +
+                "id INT PRIMARY KEY NOT NULL, " +
+                "firstname VARCHAR(100))";
+        try (Statement statement = connection.createStatement()) {
+            statement.execute(createTableSql);
+            System.out.println("Table SIMPLEJDBC_PERSON created.");
+        }
+    }
+
+} catch (SQLException e) {
+    // Gestion des exceptions SQL
+    e.printStackTrace();
+}
+```
+
+### Exemple de récupération des métadonnées du `ResultSet`
+
+```{java}
+//| vscode: {languageId: java}
+// Connexion à la base de données et récupération des métadonnées du ResultSet
+try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD);
+     ResultSet rs = connection.createStatement().executeQuery("SELECT * FROM stops")) {
+
+    // Récupération de l'objet ResultSetMetaData pour obtenir des informations sur les colonnes
+    ResultSetMetaData rsmd = rs.getMetaData();
+    int nbColonnes = rsmd.getColumnCount();
+
+    // Parcours des colonnes et affichage des informations
+    for (int i = 1; i <= nbColonnes; i++) {
+        String typeColonne = rsmd.getColumnTypeName(i); // Type de la colonne
+        String nomColonne = rsmd.getColumnName(i);      // Nom de la colonne
+        System.out.printf("Colonne %d: nom = %s, type = %s%n", i, nomColonne, typeColonne);
+    }
+} catch (SQLException e) {
+    // Gestion des exceptions SQL
+    e.printStackTrace();
+}
+```
+
+### Exemple de récupération des métadonnées des colonnes d'une table
+
+```{java}
+//| vscode: {languageId: java}
+import java.sql.*;
+import java.util.stream.IntStream;
+
+// Connexion à la base de données et récupération des métadonnées du ResultSet
+try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD);
+     ResultSet rs = connection.createStatement().executeQuery("SELECT * FROM stops LIMIT 5")) {
+
+    // Récupération de l'objet ResultSetMetaData pour obtenir des informations sur les colonnes
+    ResultSetMetaData rsmd = rs.getMetaData();
+    int nbColonnes = rsmd.getColumnCount();
+
+    // Affichage des noms de colonnes
+    IntStream.range(1, nbColonnes + 1)
+             .mapToObj(i -> {
+                 try {
+                     return rsmd.getColumnName(i)+" "+rsmd.getColumnTypeName(i);
+                 } catch (SQLException e) {
+                     throw new RuntimeException(e);
+                 }
+             })
+             .forEach(nomColonne -> System.out.printf("%-20s", nomColonne));
+    System.out.println();
+
+    // Affichage des données des lignes
+    while (rs.next()) {
+        IntStream.range(1, nbColonnes + 1)
+                 .mapToObj(i -> {
+                     try {
+                         return rs.getString(i);
+                     } catch (SQLException e) {
+                         throw new RuntimeException(e);
+                     }
+                 })
+                 .forEach(valeur -> System.out.printf("%-20s", valeur));
+        System.out.println();
+    }
+
+} catch (SQLException e) {
+    // Gestion des exceptions SQL
+    e.printStackTrace();
+}
+```
+
+## ResultSet modifiables
+
+Il est aussi possible de paramétrer un ResultSet pour qu'il soit modifiable pendant la consultation et/ou que l'on puisse revenir en arrière.
+
+```{java}
+//| vscode: {languageId: java}
+try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD);
+     ResultSet rs = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE)
+         .executeQuery("SELECT * FROM agency")) {
+
+    // Affichage des données initiales
+    System.out.println("Données initiales:");
+    while (rs.next()) {
+        System.out.printf("ID: %s, Nom: %s%n", rs.getString("agency_id"), rs.getString("agency_name"));
+    }
+
+    // Mise à jour d'un enregistrement
+    rs.beforeFirst(); // Revenir au début du ResultSet
+    while (rs.next()) {
+        if (rs.getString("agency_name").equalsIgnoreCase("Réseau Mistral")) {
+            rs.updateString("agency_name", "Agence Université Updated");
+            rs.updateRow();
+        }
+    }
+
+    // Ajout d'un nouvel enregistrement
+    rs.moveToInsertRow();
+    rs.updateString("agency_id", "9999");
+    rs.updateString("agency_name", "New Agency");
+    rs.updateString("agency_url", "http://newagency.com");
+    rs.updateString("agency_timezone", "Europe/Paris");
+    rs.insertRow();
+
+    // Suppression d'un enregistrement
+    rs.beforeFirst(); // Revenir au début du ResultSet
+    while (rs.next()) {
+        if (rs.getString("agency_name").equalsIgnoreCase("Neverland")) {
+            rs.deleteRow();
+        }
+    }
+
+    // Affichage des données mises à jour
+    rs.beforeFirst(); // Revenir au début du ResultSet
+    System.out.println("Données mises à jour:");
+    while (rs.next()) {
+        System.out.printf("ID: %s, Nom: %s%n", rs.getString("agency_id"), rs.getString("agency_name"));
+    }
+
+} catch (SQLException e) {
+    // Gestion des exceptions SQL
+    e.printStackTrace();
+}
+```
+
+## Batch Update
+
+Lorsque vous effectuez des ajouts en masse, envisagez d’utiliser les mises à jour par lots. Cependant, soyez prudent avec les transactions.
+
+```{java}
+//| vscode: {languageId: java}
+try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD)) {
+     
+  //Création d'une table PERSONNE
+  String createAccountTableSql="CREATE TABLE PERSONNE ("+
+    "id SERIAL PRIMARY KEY,"+
+    "email VARCHAR(100) NOT NULL,"+
+    "nom VARCHAR(100) NOT NULL,"+
+    "prenom VARCHAR(100) NOT NULL)";
+  Statement statement = connection.createStatement();
+  statement.executeUpdate(createAccountTableSql);
+  statement.close();     
+     
+  PreparedStatement pstmt = 
+        connection.prepareStatement("INSERT INTO PERSONNE (email, nom, prenom) VALUES(?, ?, ?)");
+ 
+  //On ajoute les exécution une à une ...
+  connection.setAutoCommit(false);
+ 
+  // On fixe les paramètres de la première requête à exécuter
+  pstmt.setString( 1, "p1.n1@...");
+  pstmt.setString( 2, "n1" );
+  pstmt.setString( 3, "p1" );
+  // Et on l'ajoute au batch
+  pstmt.addBatch();
+ 
+  // On fixe les paramètres de la seconde requête à exécuter
+  pstmt.setString( 1, "p2.n2@...");
+  pstmt.setString( 2, "n2" );
+  pstmt.setString( 3, "p2" );
+  // Et on l'ajoute au batch
+  pstmt.addBatch();
+ 
+  // On ajoute autant de requêtes que nécessaire
+  //Par exemple en lisant un flux de données.
+
+
+  //On créée un tableau d'entiers pour recevoir les résultats.
+  //et on execute toutes les mises à jour en une fois.
+  int[] affectedRecords = pstmt.executeBatch();
+ 
+  System.out.println(Arrays.toString(affectedRecords));
+    
+  //On valide les changements.
+  connection.commit();
+    
+  //Drop the table
+  connection.createStatement().executeUpdate("DROP TABLE PERSONNE");    
+}    
+```
+

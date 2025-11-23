@@ -1,0 +1,894 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "88f6d5f9-2e61-4fa4-b7f0-ed9f4bb04dc0",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "  title: \"Accès avancé aux bases de données relationnelles en Java (JDBC)\"\n",
+    "  provide_notes: true\n",
+    "  provide_slides: true\n",
+    "  jupyter: java-lts\n",
+    "  echo: true\n",
+    "  output: true\n",
+    "  categories: \n",
+    "    - Java\n",
+    "    - I111\n",
+    "    - Lecture\n",
+    "    - JDBC\n",
+    "---\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "45f3843f",
+   "metadata": {},
+   "source": [
+    "\n",
+    "## Metadata\n",
+    "\n",
+    "::: {.content-visible when-profile=\"notes\"}\n",
+    "JDBC offre des fonctionnalités puissantes pour récupérer des informations à partir d'une base de données. \n",
+    "\n",
+    "**`ResultSetMetaData`** : Cette interface permet d'obtenir des informations sur les résultats d'une requête SELECT. Vous pouvez récupérer des détails tels que le nombre de colonnes, les noms des colonnes, les types de données, les précisions, les échelles, etc. Cela facilite la manipulation des résultats et l'adaptation de votre code en fonction des données récupérées.\n",
+    "\n",
+    "**`DatabaseMetaData`** : Cette interface fournit des informations sur la base de données elle-même, indépendamment des requêtes spécifiques. Vous pouvez obtenir des détails sur les tables, les colonnes, les index, les contraintes, les utilisateurs, les privilèges, etc. Les données accessibles via `DatabaseMetaData` varient en fonction du SGBD (Système de Gestion de Bases de Données) avec lequel vous travaillez. Par exemple, certaines bases de données peuvent fournir plus d'informations que d'autres.\n",
+    ":::\n",
+    "::: {.content-visible when-profile=\"slides\"}\n",
+    "* JDBC permet de récupérer des informations sur le type de données que l'on vient de récupérer par un SELECT (interface ResultSetMetaData),\n",
+    "* mais aussi sur la base de données elle-même (interface DatabaseMetaData)\n",
+    "* Les données que l'on peut récupérer avec DatabaseMetaData dépendent du SGBD avec lequel on travaille\n",
+    ":::"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "9d88e94a",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "SLF4J(I): Connected with provider of type [ch.qos.logback.classic.spi.LogbackServiceProvider]\n"
+     ]
+    }
+   ],
+   "source": [
+    "//|echo: false\n",
+    "//|output: false\n",
+    "String DB_URL=\"jdbc:postgresql://docker/gtfs\";\n",
+    "String DB_USERNAME=Optional.of(System.getenv(\"DB_USERNAME\")).orElseThrow(()->new IllegalArgumentException(\"DB_USERNAME is required\"));\n",
+    "String DB_PASSWORD=Optional.of(System.getenv(\"DB_PASSWORD\")).orElseThrow(()->new IllegalArgumentException(\"DB_PASSWORD is required\"));\n",
+    "%maven org.postgresql:postgresql:42.7.3"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "1744b4eb-8f47-4f2d-a7a9-20eb80ad0cef",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "DBMS: PostgreSQL 17.2\n",
+      "Current Database: gtfs Schema: public\n",
+      "Table SIMPLEJDBC_PERSON created.\n"
+     ]
+    }
+   ],
+   "source": [
+    "try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD)) {\n",
+    "\n",
+    "    // Récupération des métadonnées de la base de données\n",
+    "    DatabaseMetaData metadata = connection.getMetaData();\n",
+    "\n",
+    "    // Affichage des informations sur le système de gestion de base de données\n",
+    "    System.out.printf(\"DBMS: %s %d.%d%n\",\n",
+    "            metadata.getDatabaseProductName(),\n",
+    "            metadata.getDatabaseMajorVersion(),\n",
+    "            metadata.getDatabaseMinorVersion());\n",
+    "\n",
+    "    // Affichage de la base de données et du schéma actuels\n",
+    "    System.out.printf(\"Current Database: %s Schema: %s%n\",\n",
+    "            connection.getCatalog(), connection.getSchema());\n",
+    "\n",
+    "    // Récupération de la liste des tables pour vérifier l'existence de \"SIMPLEJDBC_PERSON\"\n",
+    "    ResultSet tables = metadata.getTables(connection.getCatalog(),\n",
+    "            connection.getSchema(),\n",
+    "            \"SIMPLEJDBC_PERSON\", null);\n",
+    "\n",
+    "    if (tables.next()) {\n",
+    "        // Si la table existe déjà, affichage d'un message\n",
+    "        System.out.println(\"Table \" + tables.getString(\"TABLE_NAME\") + \" already exists.\");\n",
+    "    } else {\n",
+    "        // Si la table n'existe pas, création de la table \"SIMPLEJDBC_PERSON\"\n",
+    "        String createTableSql = \"CREATE TABLE \\\"SIMPLEJDBC_PERSON\\\"(\" +\n",
+    "                \"id INT PRIMARY KEY NOT NULL, \" +\n",
+    "                \"firstname VARCHAR(100))\";\n",
+    "        try (Statement statement = connection.createStatement()) {\n",
+    "            statement.execute(createTableSql);\n",
+    "            System.out.println(\"Table SIMPLEJDBC_PERSON created.\");\n",
+    "        }\n",
+    "    }\n",
+    "\n",
+    "} catch (SQLException e) {\n",
+    "    // Gestion des exceptions SQL\n",
+    "    e.printStackTrace();\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "3882dbd6-cd05-46d3-9c8a-63aad245598d",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Colonne 1: nom = stop_id, type = text\n",
+      "Colonne 2: nom = stop_code, type = text\n",
+      "Colonne 3: nom = stop_name, type = text\n",
+      "Colonne 4: nom = stop_desc, type = text\n",
+      "Colonne 5: nom = stop_loc, type = geography\n",
+      "Colonne 6: nom = zone_id, type = text\n",
+      "Colonne 7: nom = stop_url, type = text\n",
+      "Colonne 8: nom = location_type, type = location_type_val\n",
+      "Colonne 9: nom = parent_station, type = text\n",
+      "Colonne 10: nom = stop_timezone, type = text\n",
+      "Colonne 11: nom = wheelchair_boarding, type = wheelchair_boarding_val\n",
+      "Colonne 12: nom = level_id, type = text\n",
+      "Colonne 13: nom = platform_code, type = text\n"
+     ]
+    }
+   ],
+   "source": [
+    "// Connexion à la base de données et récupération des métadonnées du ResultSet\n",
+    "try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD);\n",
+    "     ResultSet rs = connection.createStatement().executeQuery(\"SELECT * FROM stops\")) {\n",
+    "\n",
+    "    // Récupération de l'objet ResultSetMetaData pour obtenir des informations sur les colonnes\n",
+    "    ResultSetMetaData rsmd = rs.getMetaData();\n",
+    "    int nbColonnes = rsmd.getColumnCount();\n",
+    "\n",
+    "    // Parcours des colonnes et affichage des informations\n",
+    "    for (int i = 1; i <= nbColonnes; i++) {\n",
+    "        String typeColonne = rsmd.getColumnTypeName(i); // Type de la colonne\n",
+    "        String nomColonne = rsmd.getColumnName(i);      // Nom de la colonne\n",
+    "        System.out.printf(\"Colonne %d: nom = %s, type = %s%n\", i, nomColonne, typeColonne);\n",
+    "    }\n",
+    "} catch (SQLException e) {\n",
+    "    // Gestion des exceptions SQL\n",
+    "    e.printStackTrace();\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "bdee1931",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "stop_id text        stop_code text      stop_name text      stop_desc text      stop_loc geography  zone_id text        stop_url text       location_type location_type_valparent_station text stop_timezone text  wheelchair_boarding wheelchair_boarding_vallevel_id text       platform_code text  \n",
+      "BNBACE              null                Bassin Castigneau   null                0101000020E61000001D739EB12FA91740959C137B688F4540null                null                stop                null                null                accessible          null                null                \n",
+      "BNBACO              null                Bassin Castigneau   null                0101000020E6100000B14E95EF19A91740A6D3BA0D6A8F4540null                null                stop                null                null                accessible          null                null                \n",
+      "BNBVIE              null                Base de Vie Ouest   null                0101000020E610000093C83EC8B2A0174083328D26178F4540null                null                stop                null                null                accessible          null                null                \n",
+      "BNBVIO              null                Base de Vie Ouest   null                0101000020E610000060CC96AC8AA017401E6D1CB1168F4540null                null                stop                null                null                accessible          null                null                \n",
+      "BNCASN              null                Porte Castigneau    null                0101000020E610000050A8A78FC0AF1740A13193A817904540null                null                stop                null                null                accessible          null                null                \n"
+     ]
+    }
+   ],
+   "source": [
+    "import java.sql.*;\n",
+    "import java.util.stream.IntStream;\n",
+    "\n",
+    "// Connexion à la base de données et récupération des métadonnées du ResultSet\n",
+    "try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD);\n",
+    "     ResultSet rs = connection.createStatement().executeQuery(\"SELECT * FROM stops LIMIT 5\")) {\n",
+    "\n",
+    "    // Récupération de l'objet ResultSetMetaData pour obtenir des informations sur les colonnes\n",
+    "    ResultSetMetaData rsmd = rs.getMetaData();\n",
+    "    int nbColonnes = rsmd.getColumnCount();\n",
+    "\n",
+    "    // Affichage des noms de colonnes\n",
+    "    IntStream.range(1, nbColonnes + 1)\n",
+    "             .mapToObj(i -> {\n",
+    "                 try {\n",
+    "                     return rsmd.getColumnName(i)+\" \"+rsmd.getColumnTypeName(i);\n",
+    "                 } catch (SQLException e) {\n",
+    "                     throw new RuntimeException(e);\n",
+    "                 }\n",
+    "             })\n",
+    "             .forEach(nomColonne -> System.out.printf(\"%-20s\", nomColonne));\n",
+    "    System.out.println();\n",
+    "\n",
+    "    // Affichage des données des lignes\n",
+    "    while (rs.next()) {\n",
+    "        IntStream.range(1, nbColonnes + 1)\n",
+    "                 .mapToObj(i -> {\n",
+    "                     try {\n",
+    "                         return rs.getString(i);\n",
+    "                     } catch (SQLException e) {\n",
+    "                         throw new RuntimeException(e);\n",
+    "                     }\n",
+    "                 })\n",
+    "                 .forEach(valeur -> System.out.printf(\"%-20s\", valeur));\n",
+    "        System.out.println();\n",
+    "    }\n",
+    "\n",
+    "} catch (SQLException e) {\n",
+    "    // Gestion des exceptions SQL\n",
+    "    e.printStackTrace();\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "2a44923c-1d48-492f-ad10-bb71a7bdd81b",
+   "metadata": {},
+   "source": [
+    "## ResultSet modifiables\n",
+    "Il est aussi possible de paramétrer un ResultSet pour qu'il soit modifiable pendant la consultation et/ou que l'on puisse revenir en arrière."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "cda807a2-2628-457a-ab2c-bbf4281a14de",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Données initiales:\n",
+      "ID: 1, Nom: Réseau Mistral\n",
+      "ID: 3, Nom: Neverland\n",
+      "ID: 9999, Nom: New Agency\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "org.postgresql.util.PSQLException: ERROR: duplicate key value violates unique constraint \"agency_pkey\"\n",
+      "  Detail: Key (agency_id)=(9999) already exists.\n",
+      "\tat org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:2725)\n",
+      "\tat org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2412)\n",
+      "\tat org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:371)\n",
+      "\tat org.postgresql.jdbc.PgStatement.executeInternal(PgStatement.java:502)\n",
+      "\tat org.postgresql.jdbc.PgStatement.execute(PgStatement.java:419)\n",
+      "\tat org.postgresql.jdbc.PgPreparedStatement.executeWithFlags(PgPreparedStatement.java:194)\n",
+      "\tat org.postgresql.jdbc.PgPreparedStatement.executeUpdate(PgPreparedStatement.java:155)\n",
+      "\tat org.postgresql.jdbc.PgResultSet.insertRow(PgResultSet.java:1199)\n",
+      "\tat REPL.$JShell$70.do_it$($JShell$70.java:75)\n",
+      "\tat java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)\n",
+      "\tat java.base/java.lang.reflect.Method.invoke(Method.java:580)\n",
+      "\tat io.github.spencerpark.ijava.execution.IJavaExecutionControl.lambda$execute$1(IJavaExecutionControl.java:95)\n",
+      "\tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)\n",
+      "\tat java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)\n",
+      "\tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)\n",
+      "\tat java.base/java.lang.Thread.run(Thread.java:1583)\n"
+     ]
+    }
+   ],
+   "source": [
+    "try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD);\n",
+    "     ResultSet rs = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE)\n",
+    "         .executeQuery(\"SELECT * FROM agency\")) {\n",
+    "\n",
+    "    // Affichage des données initiales\n",
+    "    System.out.println(\"Données initiales:\");\n",
+    "    while (rs.next()) {\n",
+    "        System.out.printf(\"ID: %s, Nom: %s%n\", rs.getString(\"agency_id\"), rs.getString(\"agency_name\"));\n",
+    "    }\n",
+    "\n",
+    "    // Mise à jour d'un enregistrement\n",
+    "    rs.beforeFirst(); // Revenir au début du ResultSet\n",
+    "    while (rs.next()) {\n",
+    "        if (rs.getString(\"agency_name\").equalsIgnoreCase(\"Réseau Mistral\")) {\n",
+    "            rs.updateString(\"agency_name\", \"Agence Université Updated\");\n",
+    "            rs.updateRow();\n",
+    "        }\n",
+    "    }\n",
+    "\n",
+    "    // Ajout d'un nouvel enregistrement\n",
+    "    rs.moveToInsertRow();\n",
+    "    rs.updateString(\"agency_id\", \"9999\");\n",
+    "    rs.updateString(\"agency_name\", \"New Agency\");\n",
+    "    rs.updateString(\"agency_url\", \"http://newagency.com\");\n",
+    "    rs.updateString(\"agency_timezone\", \"Europe/Paris\");\n",
+    "    rs.insertRow();\n",
+    "\n",
+    "    // Suppression d'un enregistrement\n",
+    "    rs.beforeFirst(); // Revenir au début du ResultSet\n",
+    "    while (rs.next()) {\n",
+    "        if (rs.getString(\"agency_name\").equalsIgnoreCase(\"Neverland\")) {\n",
+    "            rs.deleteRow();\n",
+    "        }\n",
+    "    }\n",
+    "\n",
+    "    // Affichage des données mises à jour\n",
+    "    rs.beforeFirst(); // Revenir au début du ResultSet\n",
+    "    System.out.println(\"Données mises à jour:\");\n",
+    "    while (rs.next()) {\n",
+    "        System.out.printf(\"ID: %s, Nom: %s%n\", rs.getString(\"agency_id\"), rs.getString(\"agency_name\"));\n",
+    "    }\n",
+    "\n",
+    "} catch (SQLException e) {\n",
+    "    // Gestion des exceptions SQL\n",
+    "    e.printStackTrace();\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "32f8199c-5cc5-48e7-b29b-56d290545cbb",
+   "metadata": {},
+   "source": [
+    "## Datasources\n",
+    "\n",
+    "::: {.content-visible when-profile=\"slides\"}\n",
+    "La gestion des connexions à la base de données est cruciale pour garantir des performances optimales et une utilisation efficace des ressources. Au lieu d'ouvrir et de fermer des connexions pour chaque requête, il est recommandé de les réutiliser autant que possible. Voici deux approches courantes pour gérer les connexions :\n",
+    "\n",
+    "1. **DataSource** : Utilisez le concept de DataSource, qui fournit une interface centralisée pour gérer les connexions. Les serveurs d'applications et les frameworks tels que Spring proposent des implémentations de DataSource. Cela vous permet de configurer les paramètres de connexion (URL, nom d'utilisateur, mot de passe) une seule fois et de réutiliser ces connexions dans toute votre application.\n",
+    "\n",
+    "2. **[Apache DBCP](http://commons.apache.org/proper/commons-dbcp/)** et **C3P0** : Utilisez des bibliothèques de pooling de connexions comme Apache DBCP ou C3P0. Elles gèrent un pool de connexions réutilisables, ce qui évite les coûts de création et de fermeture des connexions à chaque requête. Elles offrent également des fonctionnalités telles que la surveillance des connexions, la configuration des limites de pool et la gestion des connexions inactives.\n",
+    "\n",
+    "En adoptant l'une de ces approches, vous améliorerez la gestion des connexions à la base de données, réduirez la latence et optimiserez les performances de votre application.\n",
+    ":::"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "f79a546b-a6c1-4b59-ac0e-196e6084d7b1",
+   "metadata": {},
+   "source": [
+    "::: {.content-visible when-profile=\"slides\"}\n",
+    "Pour optimiser les performances et l'utilisation des ressources, réutilisez les connexions à la base de données. Deux approches courantes :\n",
+    "\n",
+    "1. **DataSource** : Utilisez une implémentation de DataSource (comme Spring) pour gérer les connexions centralisées.\n",
+    "2. **Apache DBCP** et **C3P0** : Utilisez des bibliothèques de pooling de connexions pour réduire les coûts d'ouverture/fermeture des connexions.\n",
+    ":::"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "adbf7660-ab60-41c0-9aa5-d1a81a36b935",
+   "metadata": {},
+   "source": [
+    "L'utilisation est simple on définit une classe qui paramètre une datasource qui gère un pool de connexion et fournit des connections : "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "id": "cc1f2787-e5c1-4f25-971a-c52258f9d8f6",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "%%loadFromPOM\n",
+    "<dependency>\n",
+    "    <groupId>org.apache.commons</groupId>\n",
+    "    <artifactId>commons-dbcp2</artifactId>\n",
+    "    <version>2.7.0</version>\n",
+    "</dependency>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "id": "a742c016-92fc-43a1-9cb1-919e78a74e66",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "import org.apache.commons.dbcp2.BasicDataSource;\n",
+    "import java.sql.Connection;\n",
+    "import java.sql.SQLException;\n",
+    "\n",
+    "public class DBCPDataSource {\n",
+    "\n",
+    "    // Création d'un pool de connexions avec BasicDataSource\n",
+    "    private static BasicDataSource ds = new BasicDataSource();\n",
+    "\n",
+    "    static {\n",
+    "        // Configuration des paramètres de connexion\n",
+    "        ds.setUrl(\"jdbc:postgresql://docker/gtfs\"); // URL de la base de données\n",
+    "        ds.setUsername(System.getenv(\"DB_USERNAME\")); // Nom d'utilisateur (récupéré depuis les variables d'environnement)\n",
+    "        ds.setPassword(System.getenv(\"DB_PASSWORD\")); // Mot de passe (récupéré depuis les variables d'environnement)\n",
+    "\n",
+    "        // Configuration du pool de connexions\n",
+    "        ds.setMinIdle(5); // Nombre minimal de connexions inactives dans le pool\n",
+    "        ds.setMaxIdle(10); // Nombre maximal de connexions inactives dans le pool\n",
+    "        ds.setMaxOpenPreparedStatements(100); // Nombre maximal de requêtes préparées ouvertes simultanément\n",
+    "    }\n",
+    "\n",
+    "    // Constructeur privé pour empêcher l'instanciation directe de la classe\n",
+    "    private DBCPDataSource() {\n",
+    "    }\n",
+    "\n",
+    "    // Méthode statique pour obtenir une connexion à partir du pool\n",
+    "    public static Connection getConnection() throws SQLException {\n",
+    "        return ds.getConnection();\n",
+    "    }\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "1fb19870-e489-4480-a3a0-c245c10fc9d6",
+   "metadata": {},
+   "source": [
+    "Il suffit ensuite de demander et de rendre une connexion (le close ne ferme pas forcément la connexion)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "id": "188bebf5-729d-4a8d-b62f-8cc08850b849",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Colonne 1 de nom stop_id de type text\n",
+      "Colonne 2 de nom stop_code de type text\n",
+      "Colonne 3 de nom stop_name de type text\n",
+      "Colonne 4 de nom stop_desc de type text\n",
+      "Colonne 5 de nom stop_loc de type geography\n",
+      "Colonne 6 de nom zone_id de type text\n",
+      "Colonne 7 de nom stop_url de type text\n",
+      "Colonne 8 de nom location_type de type location_type_val\n",
+      "Colonne 9 de nom parent_station de type text\n",
+      "Colonne 10 de nom stop_timezone de type text\n",
+      "Colonne 11 de nom wheelchair_boarding de type wheelchair_boarding_val\n",
+      "Colonne 12 de nom level_id de type text\n",
+      "Colonne 13 de nom platform_code de type text\n"
+     ]
+    }
+   ],
+   "source": [
+    "// Connexion à la base de données et récupération des métadonnées du ResultSet\n",
+    "try (Connection connection = DBCPDataSource.getConnection();\n",
+    "     ResultSet rs = connection.createStatement().executeQuery(\"SELECT * FROM stops\")) {\n",
+    "\n",
+    "    // Récupération de l'objet ResultSetMetaData\n",
+    "    ResultSetMetaData rsmd = rs.getMetaData();\n",
+    "    int nbColonnes = rsmd.getColumnCount();\n",
+    "\n",
+    "    // Parcours des colonnes et affichage des informations\n",
+    "    for (int i = 1; i <= nbColonnes; i++) {\n",
+    "        String typeColonne = rsmd.getColumnTypeName(i);\n",
+    "        String nomColonne = rsmd.getColumnName(i);\n",
+    "        System.out.println(\"Colonne \" + i + \" de nom \" + nomColonne + \" de type \" + typeColonne);\n",
+    "    }\n",
+    "} catch (SQLException e) {\n",
+    "    e.printStackTrace();\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "9e20e2ba-714a-4f67-9872-9beaf61306a9",
+   "metadata": {},
+   "source": [
+    "## Batch Update\n",
+    "\n",
+    "Lorsque vous effectuez des ajouts en masse, envisagez d’utiliser les mises à jour par lots. Cependant, soyez prudent avec les transactions."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "id": "e489cca7-7f6d-46e7-baaf-e3c360d614b1",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[1, 1]\n"
+     ]
+    }
+   ],
+   "source": [
+    "try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD)) {\n",
+    "     \n",
+    "  //Création d'une table PERSONNE\n",
+    "  String createAccountTableSql=\"CREATE TABLE PERSONNE (\"+\n",
+    "    \"id SERIAL PRIMARY KEY,\"+\n",
+    "    \"email VARCHAR(100) NOT NULL,\"+\n",
+    "    \"nom VARCHAR(100) NOT NULL,\"+\n",
+    "    \"prenom VARCHAR(100) NOT NULL)\";\n",
+    "  Statement statement = connection.createStatement();\n",
+    "  statement.executeUpdate(createAccountTableSql);\n",
+    "  statement.close();     \n",
+    "     \n",
+    "  PreparedStatement pstmt = \n",
+    "        connection.prepareStatement(\"INSERT INTO PERSONNE (email, nom, prenom) VALUES(?, ?, ?)\");\n",
+    " \n",
+    "  //On ajoute les exécution une à une ...\n",
+    "  connection.setAutoCommit(false);\n",
+    " \n",
+    "  // On fixe les paramètres de la première requête à exécuter\n",
+    "  pstmt.setString( 1, \"p1.n1@...\");\n",
+    "  pstmt.setString( 2, \"n1\" );\n",
+    "  pstmt.setString( 3, \"p1\" );\n",
+    "  // Et on l'ajoute au batch\n",
+    "  pstmt.addBatch();\n",
+    " \n",
+    "  // On fixe les paramètres de la seconde requête à exécuter\n",
+    "  pstmt.setString( 1, \"p2.n2@...\");\n",
+    "  pstmt.setString( 2, \"n2\" );\n",
+    "  pstmt.setString( 3, \"p2\" );\n",
+    "  // Et on l'ajoute au batch\n",
+    "  pstmt.addBatch();\n",
+    " \n",
+    "  // On ajoute autant de requêtes que nécessaire\n",
+    "  //Par exemple en lisant un flux de données.\n",
+    "\n",
+    "\n",
+    "  //On créée un tableau d'entiers pour recevoir les résultats.\n",
+    "  //et on execute toutes les mises à jour en une fois.\n",
+    "  int[] affectedRecords = pstmt.executeBatch();\n",
+    " \n",
+    "  System.out.println(Arrays.toString(affectedRecords));\n",
+    "    \n",
+    "  //On valide les changements.\n",
+    "  connection.commit();\n",
+    "    \n",
+    "  //Drop the table\n",
+    "  connection.createStatement().executeUpdate(\"DROP TABLE PERSONNE\");    \n",
+    "}    "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "d060172d-71b3-4a9a-b796-521eed26d97c",
+   "metadata": {},
+   "source": [
+    "## La couche DAO (Data Access Object) en Java JDBC\n",
+    "\n",
+    "::: {.content-visible when-profile=\"slides\"}\n",
+    "La couche DAO (Data Access Object) permet d'abstraire complètement l'interaction avec le support de persistance, qui est généralement une base de données relationnelle. Elle centralise les opérations spécifiques liées à la persistance des données et transforme les exceptions spécifiques en exceptions applicatives gérées par l'application.\n",
+    "\n",
+    "Chaque entité (par exemple, une table dans la base de données) peut être associée à une classe DAO. Étant donné que la structure des opérations CRUD (Create, Read, Update, Delete) est souvent répétitive, il est fortement recommandé de définir une interface générique et une classe générique pour les DAO.\n",
+    "\n",
+    "Voici les grandes lignes d'une implémentation de base pour une DAO :\n",
+    ":::"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "2f2492c1-bd42-4664-982d-b69387073226",
+   "metadata": {},
+   "source": [
+    "::: {.content-visible when-profile=\"slides\"}\n",
+    "- Objectif de la couche DAO\n",
+    "  - Abstraire l'accès aux données pour isoler la logique métier de la persistance.\n",
+    "  - Centraliser les opérations spécifiques liées à la persistance des données.\n",
+    "- Associations entre entités et classes DAO\n",
+    "  - Chaque entité (par exemple, une table dans la base de données) peut être associée à une classe DAO.\n",
+    "  - Évite la répétition de code pour les opérations CRUD (Create, Read, Update, Delete).\n",
+    "- Implémentation de base pour une DAO\n",
+    "  1. **Interface générique** :\n",
+    "     - Définir une interface avec les méthodes CRUD (create, read, update, delete).\n",
+    "     - Exemple : `GenericDAO<T>`.\n",
+    "  2. **Classe générique** :\n",
+    "     - Implémenter cette interface dans une classe générique (par exemple, `GenericDAOImpl<T>`).\n",
+    "     - Utiliser des requêtes SQL paramétrées pour les opérations.\n",
+    "     - Gérer les exceptions spécifiques (transformer les exceptions SQL en exceptions applicatives).\n",
+    ":::"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "5ab0af49-8c28-46e6-8c1e-e74a2def9f24",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "source": [
+    "### Interface générique DAO\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "0a3cd65d",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "id": "90ab0692",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "public interface GenericDAO<T, ID> {\n",
+    "    void create(T entity) throws SQLException;\n",
+    "    T read(ID id) throws SQLException;\n",
+    "    void update(T entity) throws SQLException;\n",
+    "    void delete(ID id) throws SQLException;\n",
+    "    List<T> findAll() throws SQLException;\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c4354415",
+   "metadata": {},
+   "source": [
+    "### Implantation concrète DAO\n",
+    "\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 36,
+   "id": "00ec35d8",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "// Record User pour représenter l'entité utilisateur\n",
+    "public record User(Integer id, String name, String email) {}\n",
+    "\n",
+    "// Implémentation concrète de UserDAO\n",
+    "public class UserDAO implements GenericDAO<User, Integer> {\n",
+    "    private Connection connection;\n",
+    "\n",
+    "    public UserDAO(Connection connection) {\n",
+    "        this.connection = connection;\n",
+    "    }\n",
+    "\n",
+    "    @Override\n",
+    "    public void create(User user) throws SQLException {\n",
+    "        String sql = \"INSERT INTO users (name, email) VALUES (?, ?)\";\n",
+    "        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {\n",
+    "            pstmt.setString(1, user.name());\n",
+    "            pstmt.setString(2, user.email());\n",
+    "            pstmt.executeUpdate();\n",
+    "        }\n",
+    "    }\n",
+    "\n",
+    "    @Override\n",
+    "    public User read(Integer id) throws SQLException {\n",
+    "        String sql = \"SELECT * FROM users WHERE id = ?\";\n",
+    "        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {\n",
+    "            pstmt.setInt(1, id);\n",
+    "            try (ResultSet rs = pstmt.executeQuery()) {\n",
+    "                if (rs.next()) {\n",
+    "                    return new User(rs.getInt(\"id\"), rs.getString(\"name\"), rs.getString(\"email\"));\n",
+    "                }\n",
+    "            }\n",
+    "        }\n",
+    "        return null;\n",
+    "    }\n",
+    "\n",
+    "    @Override\n",
+    "    public void update(User user) throws SQLException {\n",
+    "        String sql = \"UPDATE users SET name = ?, email = ? WHERE id = ?\";\n",
+    "        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {\n",
+    "            pstmt.setString(1, user.name());\n",
+    "            pstmt.setString(2, user.email());\n",
+    "            pstmt.setInt(3, user.id());\n",
+    "            pstmt.executeUpdate();\n",
+    "        }\n",
+    "    }\n",
+    "\n",
+    "    @Override\n",
+    "    public void delete(Integer id) throws SQLException {\n",
+    "        String sql = \"DELETE FROM users WHERE id = ?\";\n",
+    "        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {\n",
+    "            pstmt.setInt(1, id);\n",
+    "            pstmt.executeUpdate();\n",
+    "        }\n",
+    "    }\n",
+    "\n",
+    "    @Override\n",
+    "    public List<User> findAll() throws SQLException {\n",
+    "        List<User> users = new ArrayList<>();\n",
+    "        String sql = \"SELECT * FROM users\";\n",
+    "        try (Statement stmt = connection.createStatement();\n",
+    "             ResultSet rs = stmt.executeQuery(sql)) {\n",
+    "            while (rs.next()) {\n",
+    "                users.add(new User(rs.getInt(\"id\"), rs.getString(\"name\"), rs.getString(\"email\")));\n",
+    "            }\n",
+    "        }\n",
+    "        return users;\n",
+    "    }\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 43,
+   "id": "7689acec",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "%maven com.h2database:h2:2.3.232\n",
+    "%maven com.github.javafaker:javafaker:1.0.2\n",
+    "import com.github.javafaker.Faker;"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 44,
+   "id": "8ecdf492",
+   "metadata": {
+    "vscode": {
+     "languageId": "java"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Database setup completed successfully.\n",
+      "Read user: User[id=1, name=Michal Rutherford, email=jimmy.braun@yahoo.com]\n",
+      "User[id=1, name=Alice Updated, email=alice.updated@example.com]\n",
+      "User[id=3, name=Ms. Roderick Stokes, email=aurora.kovacek@hotmail.com]\n",
+      "User[id=4, name=Aldo Wilkinson V, email=cyrstal.dietrich@yahoo.com]\n",
+      "User[id=5, name=Dr. Dean Bogan, email=josef.herzog@hotmail.com]\n",
+      "User[id=6, name=Charise Gottlieb, email=brady.metz@hotmail.com]\n",
+      "User[id=7, name=Jose Hyatt, email=riva.fadel@hotmail.com]\n",
+      "User[id=8, name=Andrea Tremblay, email=layne.hoeger@hotmail.com]\n",
+      "User[id=9, name=Jennine Hyatt, email=marquis.schultz@gmail.com]\n",
+      "User[id=10, name=Evan Barton, email=ta.hudson@yahoo.com]\n",
+      "User[id=11, name=Alice, email=alice@example.com]\n",
+      "User[id=12, name=Bob, email=bob@example.com]\n"
+     ]
+    }
+   ],
+   "source": [
+    "private static final String DB_URL = \"jdbc:h2:mem:testdb\";\n",
+    "private static final String DB_USERNAME = \"sa\";\n",
+    "private static final String DB_PASSWORD = \"\";\n",
+    "\n",
+    "Class.forName(\"org.h2.Driver\");\n",
+    "\n",
+    "private static void createTables(Connection connection) throws SQLException {\n",
+    "    String createUsersTableSql = \"CREATE TABLE users (\" +\n",
+    "            \"id INT AUTO_INCREMENT PRIMARY KEY,\" +\n",
+    "            \"name VARCHAR(255) NOT NULL,\" +\n",
+    "            \"email VARCHAR(255) NOT NULL)\";\n",
+    "    try (Statement statement = connection.createStatement()) {\n",
+    "        statement.execute(createUsersTableSql);\n",
+    "    }\n",
+    "}\n",
+    "\n",
+    "private static void populateTables(Connection connection) throws SQLException {\n",
+    "    Faker faker = new Faker();\n",
+    "    String insertUsersSql = \"INSERT INTO users (name, email) VALUES (?, ?)\";\n",
+    "\n",
+    "    try (PreparedStatement pstmt = connection.prepareStatement(insertUsersSql)) {\n",
+    "        IntStream.range(0, 10).forEach(i -> {\n",
+    "            try {\n",
+    "                pstmt.setString(1, faker.name().fullName());\n",
+    "                pstmt.setString(2, faker.internet().emailAddress());\n",
+    "                pstmt.executeUpdate();\n",
+    "            } catch (SQLException e) {\n",
+    "                throw new RuntimeException(e);\n",
+    "            }\n",
+    "        });\n",
+    "    }\n",
+    "}\n",
+    "try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD)) {\n",
+    "    createTables(connection);\n",
+    "    populateTables(connection);\n",
+    "    System.out.println(\"Database setup completed successfully.\");\n",
+    "\n",
+    "    // Utilisation de UserDAO pour effectuer des opérations CRUD\n",
+    "    UserDAO userDAO = new UserDAO(connection);\n",
+    "\n",
+    "    // Création d'utilisateurs\n",
+    "    userDAO.create(new User(null, \"Alice\", \"alice@example.com\"));\n",
+    "    userDAO.create(new User(null, \"Bob\", \"bob@example.com\"));\n",
+    "\n",
+    "    // Lecture d'un utilisateur\n",
+    "    User user = userDAO.read(1);\n",
+    "    System.out.println(\"Read user: \" + user);\n",
+    "\n",
+    "    // Mise à jour d'un utilisateur\n",
+    "    userDAO.update(new User(1, \"Alice Updated\", \"alice.updated@example.com\"));\n",
+    "\n",
+    "    // Suppression d'un utilisateur\n",
+    "    userDAO.delete(2);\n",
+    "\n",
+    "    // Lecture de tous les utilisateurs\n",
+    "    List<User> users = userDAO.findAll();\n",
+    "    users.forEach(System.out::println);\n",
+    "\n",
+    "} catch (SQLException e) {\n",
+    "    e.printStackTrace();\n",
+    "}\n"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "java-lts",
+   "language": "java",
+   "name": "java-lts"
+  },
+  "language_info": {
+   "codemirror_mode": "java",
+   "file_extension": ".jshell",
+   "mimetype": "text/x-java-source",
+   "name": "Java",
+   "pygments_lexer": "java",
+   "version": "21.0.5+11-LTS"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}

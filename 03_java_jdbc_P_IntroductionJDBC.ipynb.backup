@@ -5,8 +5,19 @@
    "id": "5de7f200-a9a6-4ae9-b096-e4ee769fd20b",
    "metadata": {},
    "source": [
-    "# TP JDBC\n",
-    "\n",
+    "---\n",
+    "  title: \"TP JDBC\"\n",
+    "  provide_notes: true\n",
+    "  provide_slides: false\n",
+    "  jupyter: java-lts\n",
+    "  echo: true\n",
+    "  output: true\n",
+    "  categories: \n",
+    "    - Java\n",
+    "    - I111\n",
+    "    - Exercices\n",
+    "    - JDBC\n",
+    "---\n",
     "Ce TP peut être fait en utilisant en particulier postgresql (installé en salle de TP) ou la base de données h2 (http://www.h2database.com/html/cheatSheet.html) que vous ferez fonctionner en serveur.\n",
     "\n",
     "Il est aussi possible d’utiliser très simplement un serveur mysql (ou postgresql) avec Docker :\n",
@@ -73,7 +84,7 @@
     "\n",
     "Mettez en place un pool de connections avec Apache Commons DBCP : https://www.baeldung.com/java-connection-pooling\n",
     "\n",
-    "## DAO Génétique\n",
+    "## DAO Générique\n",
     "\n",
     "  * Créer une interface générique paramétrée par le type qui sera celui de votre entité (Personne, Chien, …) cette interface proposera par exemple les methodes : T find(long id), List<T> findAll(), persist(T), update(T), remove(T). Vous pourrez ensuite améliorer cette interface.\n",
     "  * Créer une classe d’entité Personne, une classe DAOPersonne qui implante DAO<Personne>.\n",
@@ -83,7 +94,7 @@
   },
   {
    "cell_type": "code",
-   "execution_count": 1,
+   "execution_count": 2,
    "id": "f5b1b6d1-fef4-4802-93ef-7ee67464af48",
    "metadata": {},
    "outputs": [],
@@ -92,15 +103,15 @@
  ],
  "metadata": {
   "kernelspec": {
-   "display_name": "Java [conda env:root] *",
+   "display_name": "Java",
    "language": "java",
-   "name": "conda-root-java"
+   "name": "java"
   },
   "language_info": {
    "codemirror_mode": "java",
    "file_extension": ".jshell",
    "mimetype": "text/x-java-source",
-   "name": "Java",
+   "name": "java",
    "pygments_lexer": "java",
    "version": "21.0.2+13-LTS"
   }

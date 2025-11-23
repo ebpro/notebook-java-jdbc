@@ -1,0 +1,12 @@
+---
+title: Java Dababase Connectivity (JDBC)
+description: Cours de Java Database Connectivity (JDBC)
+
+metadata-files:
+  - quarto-utils/index-listing.yml
+
+listing: true
+
+jupyter: java-lts
+---
+

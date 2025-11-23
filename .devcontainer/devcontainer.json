@@ -1,0 +1,32 @@
+{
+  "name": "notebook-java-jdbc",
+  // The order of the files is important since later files override previous ones
+  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.extend.yml"],
+  "service": "notebook",
+  "workspaceFolder": "/home/jovyan/work/local",
+  "shutdownAction": "stopCompose",
+  // Add useful VS Code extensions
+  "customizations": {
+    "vscode": {
+      "extensionDir": "/home/jovyan/.local/share/codeserver/extensions",
+      "extensions": [
+        "vscodevim.vim",
+        "cweijan.vscode-database-client2",
+        "ms-azuretools.vscode-docker",
+        "vscjava.vscode-java-pack",
+        "ms-toolsai.jupyter",
+        "vscjava.vscode-maven",
+        "jebbs.plantuml",
+        "sonarsource.sonarlint-vscode",
+        "ms-python.python",
+        "quarto.quarto"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/conda/bin/python",
+        "python.linting.enabled": true
+      }
+    }
+  },
+  // Container-specific settings
+  "remoteUser": "jovyan"
+}
